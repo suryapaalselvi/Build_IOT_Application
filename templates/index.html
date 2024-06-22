@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Data Display</title>
+    <style>
+        .light {
+            position: absolute;
+        }
+
+        .light[type="light"] {
+            width: 100px;
+            height: 100px;
+        }
+
+        .light[type="fan"] {
+            width: 200px;
+            height: 200px;
+        }
+
+        .light[type="machine"] {
+            width: 400px;
+            height: 300px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Data Display</h1>
+    {% for item in data %}
+    <div class="light" style="top: {{ item.y }}px; left: {{ item.x }}px; background-color: {% if item.state == 1 %}green{% else %}red{% endif %};" type="{{ item.type }}">
+        <button onclick="updateState({{ loop.index0 }})">{% if item.state == 1 %}Off{% else %}On{% endif %}</button>
+    </div>
+    <input type="hidden" name="x_{{ loop.index0 }}" value="{{ item.x }}">
+    <input type="hidden" name="y_{{ loop.index0 }}" value="{{ item.y }}">
+    {% endfor %}
+    <button id="editButton">Edit</button>
+    <button id="saveButton">Save</button>
+
+    <script>
+        // Get the buttons and the movable divs
+        const editButton = document.getElementById('editButton');
+        const saveButton = document.getElementById('saveButton');
+        const lightDivs = document.querySelectorAll('.light');
+        let isEditMode = false;
+        let resizing = false;
+        let rotation = 0;
+
+        // Add event listener to the edit button
+        editButton.addEventListener('click', () => {
+            isEditMode = true;
+            // Make the light divs movable
+            lightDivs.forEach((div) => {
+                makeMovable(div);
+            });
+        });
+
+        // Add event listener to the save button
+        saveButton.addEventListener('click', () => {
+            // Save the positions of the light divs
+            const positions = [];
+            lightDivs.forEach((div, index) => {
+                const position = getTranslate(div);
+                positions.push({
+                    x: position.left,
+                    y: position.top,
+                    index: index
+                });
+            });
+
+            // Send the positions to the server
+            fetch('/save_positions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: positions.map((pos, i) => `x_${i}=${pos.x}&y_${i}=${pos.y}`).join('&')
+            })
+            .then(response => response.text())
+            .then(data => {
+                console.log(data);
+                location.reload();
+            })
+            .catch(error => console.error(error));
+        });
+
+        // Function to make a div element movable
+        function makeMovable(element) {
+            let isDragging = false;
+            let currentX;
+            let currentY;
+            let initialX;
+            let initialY;
+            let xOffset = 0;
+            let yOffset = 0;
+
+            element.addEventListener('mousedown', dragStart);
+            element.addEventListener('mouseup', dragEnd);
+            element.addEventListener('mousemove', drag);
+
+            function dragStart(e) {
+                initialX = e.clientX - xOffset;
+                initialY = e.clientY - yOffset;
+
+                if (isDragging) {
+                    return;
+                }
+
+                if (e.target === element) {
+                    isDragging = true;
+                }
+            }
+
+            function dragEnd(e) {
+                initialX = currentX;
+                initialY = currentY;
+
+                isDragging = false;
+            }
+
+            function drag(e) {
+                if (!isDragging) {
+                    return;
+                }
+
+                e.preventDefault();
+
+                if (e.target === element) {
+                    currentX = e.clientX - initialX;
+                    currentY = e.clientY - initialY;
+
+                    xOffset = currentX;
+                    yOffset = currentY;
+
+                    setTranslate(currentX, currentY, element);
+
+                    if (resizing) {
+                        setResize(currentX, currentY, element);
+                    }
+
+                    if (rotation) {
+                        setRotate(currentX, currentY, element);
+                    }
+                }
+            }
+
+            function setTranslate(xPos, yPos, el) {
+                el.style.transform = `translate3d(${xPos}px, ${yPos}px, 0)`;
+            }
+
+            function setResize(xPos, yPos, el) {
+                el.style.width = `${el.offsetWidth + xPos}px`;
+                el.style.height = `${el.offsetHeight + yPos}px`;
+            }
+
+            function setRotate(xPos, yPos, el) {
+                el.style.transform = `translate3d(${xPos}px, ${yPos}px, 0) rotate(${rotation}deg)`;
+            }
+        }
+
+        // Function to get the position of a div
+        function getTranslate(element) {
+            const rect = element.getBoundingClientRect();
+            return {
+                top: rect.top,
+                left: rect.left
+            };
+        }
+
+        // Make the initial div movable
+        lightDivs.forEach((div) => {
+            if (isEditMode) {
+                makeMovable(div);
+            }
+        });
+
+        function updateState(index) {
+            fetch('/update_state', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: 'index=' + index
+            })
+            .then(response => response.text())
+            .then(data => {
+                console.log(data);
+                location.reload();
+            })
+            .catch(error => console.error(error));
+        }
+    </script>
+</body>
+</html>
